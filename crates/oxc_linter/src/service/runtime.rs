@@ -1182,19 +1182,14 @@ impl Runtime {
             return vec![];
         }
 
-        let normalized_changed: FxHashSet<PathBuf> =
-            changed.iter().map(|path| Self::normalize_for_compare(path)).collect();
-        let normalized_deleted: FxHashSet<PathBuf> =
-            deleted.iter().map(|path| Self::normalize_for_compare(path)).collect();
-
         let candidate_set: IndexSet<Arc<OsStr>, FxBuildHasher> =
             candidates.iter().cloned().collect();
 
         candidates
             .into_iter()
             .filter(|path| {
-                let normalized = Self::normalize_for_compare(Path::new(path.as_ref()));
-                if normalized_changed.contains(&normalized) {
+                let normalized = self.normalize_for_compare(Path::new(path.as_ref()));
+                if changed.contains(&normalized) {
                     return true;
                 }
                 if self.resolver.is_none() {
@@ -1204,25 +1199,23 @@ impl Runtime {
                     file_system,
                     &candidate_set,
                     path,
-                    &normalized_changed,
+                    changed,
                 ) || self.imports_deleted_module(
                     file_system,
                     &candidate_set,
                     path,
-                    &normalized_deleted,
+                    deleted,
                 )
             })
             .collect()
     }
 
-    fn normalize_for_compare(path: &Path) -> PathBuf {
+    fn normalize_for_compare(&self, path: &Path) -> PathBuf {
         path.canonicalize().unwrap_or_else(|_| {
             if path.is_absolute() {
                 path.to_path_buf()
             } else {
-                std::env::current_dir()
-                    .map(|cwd| cwd.join(path))
-                    .unwrap_or_else(|_| path.to_path_buf())
+                self.cwd.join(path)
             }
         })
     }
@@ -1242,7 +1235,7 @@ impl Runtime {
         let mut stack = vec![PathBuf::from(entry.as_ref())];
 
         while let Some(path) = stack.pop() {
-            let normalized = Self::normalize_for_compare(&path);
+            let normalized = self.normalize_for_compare(&path);
             if !visited.insert(normalized.clone()) {
                 continue;
             }
@@ -1267,7 +1260,7 @@ impl Runtime {
                     if Self::is_node_modules(dep_path) {
                         continue;
                     }
-                    let normalized_dep = Self::normalize_for_compare(dep_path);
+                    let normalized_dep = self.normalize_for_compare(dep_path);
                     if changed.contains(&normalized_dep) {
                         return true;
                     }
@@ -1311,7 +1304,7 @@ impl Runtime {
 
             for request in &record.resolved_module_requests {
                 let normalized =
-                    Self::normalize_for_compare(Path::new(request.resolved_requested_path.as_ref()));
+                    self.normalize_for_compare(Path::new(request.resolved_requested_path.as_ref()));
                 if deleted.contains(&normalized) {
                     return true;
                 }
@@ -1319,11 +1312,11 @@ impl Runtime {
 
             for specifier in record.module_record.requested_modules.keys() {
                 if let Ok(resolution) = resolver.resolve_file(importer, specifier) {
-                    let normalized = Self::normalize_for_compare(resolution.path());
+                    let normalized = self.normalize_for_compare(resolution.path());
                     if deleted.contains(&normalized) {
                         return true;
                     }
-                } else if Self::specifier_targets_deleted(importer, specifier.as_str(), deleted) {
+                } else if self.specifier_targets_deleted(importer, specifier.as_str(), deleted) {
                     return true;
                 }
             }
@@ -1333,6 +1326,7 @@ impl Runtime {
     }
 
     fn specifier_targets_deleted(
+        &self,
         importer: &Path,
         specifier: &str,
         deleted: &FxHashSet<PathBuf>,
@@ -1341,15 +1335,15 @@ impl Runtime {
         let joined = base.join(specifier);
 
         for deleted_path in deleted {
-            let normalized_deleted = Self::normalize_for_compare(deleted_path);
-            if Self::normalize_for_compare(&joined) == normalized_deleted {
+            let normalized_deleted = self.normalize_for_compare(deleted_path);
+            if self.normalize_for_compare(&joined) == normalized_deleted {
                 return true;
             }
             if joined.extension().is_some() {
                 continue;
             }
             for ext in VALID_EXTENSIONS {
-                if Self::normalize_for_compare(&joined.with_extension(ext)) == normalized_deleted {
+                if self.normalize_for_compare(&joined.with_extension(ext)) == normalized_deleted {
                     return true;
                 }
             }

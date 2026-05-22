@@ -110,6 +110,9 @@ impl LintService {
     ///
     /// When cross-module resolution is enabled, keeps files that directly changed,
     /// transitively import a changed local module, or directly import a deleted module.
+    ///
+    /// `changed` and `deleted` must be normalized for set comparison using the service
+    /// working directory (canonicalize when possible, otherwise resolve relative paths from `cwd`).
     pub fn filter_paths_by_changed(
         &self,
         file_system: &(dyn RuntimeFileSystem + Sync + Send),

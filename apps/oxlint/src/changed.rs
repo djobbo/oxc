@@ -86,17 +86,6 @@ pub fn filter_files_by_changed(
         );
     }
 
-    let normalized_changed: FxHashSet<PathBuf> = changed
-        .changed_paths
-        .iter()
-        .map(|path| normalize_path(path, cwd))
-        .collect();
-    let normalized_deleted: FxHashSet<PathBuf> = changed
-        .deleted_paths
-        .iter()
-        .map(|path| normalize_path(path, cwd))
-        .collect();
-
     if use_cross_module {
         let mut lint_options = LintServiceOptions::new(cwd).with_cross_module(true);
         if let Some(tsconfig) = tsconfig.filter(|path| path.is_file()) {
@@ -109,14 +98,14 @@ pub fn filter_files_by_changed(
         lint_service.filter_paths_by_changed(
             &OsFileSystem,
             candidates,
-            &normalized_changed,
-            &normalized_deleted,
+            &changed.changed_paths,
+            &changed.deleted_paths,
         )
     } else {
         candidates
             .into_iter()
             .filter(|path| {
-                normalized_changed.contains(&normalize_path(Path::new(path.as_ref()), cwd))
+                changed.changed_paths.contains(&normalize_path(Path::new(path.as_ref()), cwd))
             })
             .collect()
     }
