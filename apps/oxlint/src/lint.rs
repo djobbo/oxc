@@ -1107,7 +1107,7 @@ mod test {
             "files",
             "src",
         ]);
-        assert!(output.contains("warning: --changed without --import-plugin"));
+        assert!(output.contains("warning: changed-file filtering without --import-plugin"));
         assert!(output.contains("utils.ts"));
         assert!(!output.contains("consumer.ts"));
         assert!(matches!(result, crate::cli::CliRunResult::LintSucceeded));

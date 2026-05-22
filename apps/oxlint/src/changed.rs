@@ -82,7 +82,7 @@ pub fn filter_files_by_changed(
     if !use_cross_module && (!changed.changed_paths.is_empty() || has_deleted) {
         print_and_flush_stdout(
             stdout,
-            "warning: --changed without --import-plugin only lints files in git diff, not their importers\n",
+            "warning: changed-file filtering without --import-plugin only lints changed files, not their importers\n",
         );
     }
 
