@@ -11,21 +11,13 @@ pub struct FindChangedFilesOptions {
 }
 
 /// Glob pattern that forces a full lint run when a changed file matches.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ForceRerunTrigger(pub &'static str);
-
-impl ForceRerunTrigger {
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        self.0
-    }
-}
+pub type ForceRerunTrigger = &'static str;
 
 /// Default config-change triggers (Vitest `forceRerunTriggers` parity).
 pub const DEFAULT_FORCE_RERUN_TRIGGERS: &[ForceRerunTrigger] = &[
-    ForceRerunTrigger("**/oxlint.config.*"),
-    ForceRerunTrigger("**/.oxlintrc.json"),
-    ForceRerunTrigger("**/.oxlintrc.jsonc"),
-    ForceRerunTrigger("**/package.json"),
-    ForceRerunTrigger("**/tsconfig*.json"),
+    "**/oxlint.config.*",
+    "**/.oxlintrc.json",
+    "**/.oxlintrc.jsonc",
+    "**/package.json",
+    "**/tsconfig*.json",
 ];

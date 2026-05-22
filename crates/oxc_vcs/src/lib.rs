@@ -59,6 +59,6 @@ pub fn matches_force_rerun_trigger(
     changed_paths.iter().any(|path| {
         let path_lossy = path.to_string_lossy();
         let path_str = path_lossy.cow_replace('\\', "/");
-        triggers.iter().any(|trigger| fast_glob::glob_match(trigger.as_str(), path_str.as_ref()))
+        triggers.iter().any(|trigger| fast_glob::glob_match(*trigger, path_str.as_ref()))
     })
 }
