@@ -200,9 +200,6 @@ impl GitVcsProvider {
 
         if options.staged_only {
             paths.extend(Self::rename_old_paths(root, true)?);
-        } else if options.changed_since.is_some() {
-            paths.extend(Self::rename_old_paths(root, true)?);
-            paths.extend(Self::rename_old_paths(root, false)?);
         } else {
             paths.extend(Self::rename_old_paths(root, true)?);
             paths.extend(Self::rename_old_paths(root, false)?);

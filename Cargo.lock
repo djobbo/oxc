@@ -2613,6 +2613,7 @@ dependencies = [
 name = "oxc_vcs"
 version = "0.0.0"
 dependencies = [
+ "cow-utils",
  "fast-glob",
  "rustc-hash",
  "tempfile",

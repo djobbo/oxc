@@ -1,3 +1,5 @@
+//! Version-control helpers for discovering changed files (used by oxlint and other tools).
+
 mod git;
 mod options;
 
@@ -5,6 +7,8 @@ pub use git::{GitVcsError, GitVcsProvider};
 pub use options::{FindChangedFilesOptions, ForceRerunTrigger, DEFAULT_FORCE_RERUN_TRIGGERS};
 
 use std::path::{Path, PathBuf};
+
+use cow_utils::CowUtils;
 
 /// Changed paths discovered from version control.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -18,6 +22,11 @@ pub struct ChangedPaths {
 /// Finds files changed according to version control.
 pub trait VcsProvider {
     /// Returns absolute paths of changed files, split into modified and deleted sets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GitVcsError`] when the repository cannot be located, a git command fails,
+    /// or an I/O error occurs while running git.
     fn find_changed_files(
         &self,
         options: &FindChangedFilesOptions,
@@ -45,7 +54,8 @@ pub fn matches_force_rerun_trigger(
     triggers: &[ForceRerunTrigger],
 ) -> bool {
     changed_paths.iter().any(|path| {
-        let path_str = path.to_string_lossy().replace('\\', "/");
-        triggers.iter().any(|trigger| fast_glob::glob_match(trigger.as_str(), &path_str))
+        let path_lossy = path.to_string_lossy();
+        let path_str = path_lossy.cow_replace('\\', "/");
+        triggers.iter().any(|trigger| fast_glob::glob_match(trigger.as_str(), path_str.as_ref()))
     })
 }
