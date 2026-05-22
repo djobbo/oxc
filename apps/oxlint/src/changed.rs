@@ -12,9 +12,13 @@ use rustc_hash::FxHashSet;
 
 use crate::{cli::ChangedOptions, lint::print_and_flush_stdout};
 
+/// Resolved changed-file sets from CLI options, ready for lint filtering.
 pub struct ChangedFilterResult {
+    /// Normalized paths of existing changed files.
     pub changed_paths: FxHashSet<PathBuf>,
+    /// Normalized paths of deleted files (may no longer exist on disk).
     pub deleted_paths: FxHashSet<PathBuf>,
+    /// When true, skip path filtering and lint all candidates (config file changed).
     pub force_full_run: bool,
 }
 

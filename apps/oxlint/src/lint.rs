@@ -373,18 +373,14 @@ impl CliRunner {
         if changed_options.is_active() {
             let changed = match resolve_changed_paths(&self.cwd, &changed_options) {
                 Ok(changed) => changed,
-                Err(oxc_vcs::VcsError::NotARepository) => {
-                    print_and_flush_stdout(
-                        stdout,
-                        "Could not determine changed files: not a git repository.\nUse --related to pass explicit changed paths.\n",
-                    );
-                    return CliRunResult::InvalidOptionChangedVcs;
-                }
                 Err(err) => {
-                    print_and_flush_stdout(
-                        stdout,
-                        &format!("Could not determine changed files: {err}\n"),
-                    );
+                    let message = match err {
+                        oxc_vcs::VcsError::NotARepository => format!(
+                            "Could not determine changed files: {err}\nUse --related to pass explicit changed paths.\n"
+                        ),
+                        err => format!("Could not determine changed files: {err}\n"),
+                    };
+                    print_and_flush_stdout(stdout, &message);
                     return CliRunResult::InvalidOptionChangedVcs;
                 }
             };

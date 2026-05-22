@@ -1195,28 +1195,16 @@ impl Runtime {
                 if self.resolver.is_none() {
                     return false;
                 }
-                self.imports_changed_file(
-                    file_system,
-                    &candidate_set,
-                    path,
-                    changed,
-                ) || self.imports_deleted_module(
-                    file_system,
-                    &candidate_set,
-                    path,
-                    deleted,
-                )
+                self.imports_changed_file(file_system, &candidate_set, path, changed)
+                    || self.imports_deleted_module(file_system, &candidate_set, path, deleted)
             })
             .collect()
     }
 
+    /// Must stay in sync with [`oxc_vcs::normalize_path`].
     fn normalize_for_compare(&self, path: &Path) -> PathBuf {
         path.canonicalize().unwrap_or_else(|_| {
-            if path.is_absolute() {
-                path.to_path_buf()
-            } else {
-                self.cwd.join(path)
-            }
+            if path.is_absolute() { path.to_path_buf() } else { self.cwd.join(path) }
         })
     }
 
@@ -1241,13 +1229,9 @@ impl Runtime {
             }
 
             let path_arc: Arc<OsStr> = Arc::from(path.as_os_str());
-            let Some(output) = self.process_path_to_module(
-                file_system,
-                candidates,
-                &path_arc,
-                false,
-                None,
-            ) else {
+            let Some(output) =
+                self.process_path_to_module(file_system, candidates, &path_arc, false, None)
+            else {
                 continue;
             };
 
@@ -1287,13 +1271,8 @@ impl Runtime {
         };
 
         let importer = Path::new(entry.as_ref());
-        let Some(output) = self.process_path_to_module(
-            file_system,
-            candidates,
-            entry,
-            false,
-            None,
-        ) else {
+        let Some(output) = self.process_path_to_module(file_system, candidates, entry, false, None)
+        else {
             return false;
         };
 

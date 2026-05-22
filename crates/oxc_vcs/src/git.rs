@@ -227,10 +227,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{
-        options::DEFAULT_FORCE_RERUN_TRIGGERS,
-        test_helpers::{commit_all, init_git_repo, stage_paths},
-    };
+    use crate::test_helpers::{commit_all, init_git_repo, stage_paths};
 
     #[test]
     fn uncommitted_changes_include_staged_and_unstaged() {
@@ -334,13 +331,5 @@ mod tests {
             })
             .unwrap_err();
         assert!(matches!(err, crate::VcsError::NotARepository));
-    }
-
-    #[test]
-    fn force_rerun_triggers_match_config_files() {
-        let changed = vec![PathBuf::from("/project/package.json")];
-        assert!(crate::matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
-        let changed = vec![PathBuf::from("/project/src/utils.ts")];
-        assert!(!crate::matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
     }
 }

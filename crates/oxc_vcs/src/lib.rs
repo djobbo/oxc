@@ -40,6 +40,8 @@ pub trait VcsProvider {
 /// Normalize a path for set comparisons.
 ///
 /// Uses [`Path::canonicalize`] when possible, otherwise absolute resolution from `cwd`.
+///
+/// Must stay in sync with `oxc_linter::service::runtime::Runtime::normalize_for_compare`.
 #[must_use]
 pub fn normalize_path(path: &Path, cwd: &Path) -> PathBuf {
     path.canonicalize()
@@ -57,4 +59,19 @@ pub fn matches_force_rerun_trigger(
         let path_str = path_lossy.cow_replace('\\', "/");
         triggers.iter().any(|trigger| fast_glob::glob_match(*trigger, path_str.as_ref()))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{DEFAULT_FORCE_RERUN_TRIGGERS, matches_force_rerun_trigger};
+
+    #[test]
+    fn force_rerun_triggers_match_config_files() {
+        let changed = vec![PathBuf::from("/project/package.json")];
+        assert!(matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
+        let changed = vec![PathBuf::from("/project/src/utils.ts")];
+        assert!(!matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
+    }
 }
