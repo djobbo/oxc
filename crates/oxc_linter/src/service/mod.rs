@@ -108,15 +108,16 @@ impl LintService {
 
     /// Filter lint candidates to those affected by changed files.
     ///
-    /// When cross-module resolution is enabled, keeps files that directly changed or
-    /// transitively import a changed local module.
+    /// When cross-module resolution is enabled, keeps files that directly changed,
+    /// transitively import a changed local module, or directly import a deleted module.
     pub fn filter_paths_by_changed(
         &self,
         file_system: &(dyn RuntimeFileSystem + Sync + Send),
         candidates: Vec<Arc<OsStr>>,
         changed: &FxHashSet<PathBuf>,
+        deleted: &FxHashSet<PathBuf>,
     ) -> Vec<Arc<OsStr>> {
-        self.runtime.filter_paths_by_changed(file_system, candidates, changed)
+        self.runtime.filter_paths_by_changed(file_system, candidates, changed, deleted)
     }
 
     /// For tests

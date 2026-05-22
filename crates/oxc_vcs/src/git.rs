@@ -6,7 +6,7 @@ use std::{
 
 use rustc_hash::FxHashSet;
 
-use crate::{FindChangedFilesOptions, VcsProvider, normalize_path};
+use crate::{ChangedPaths, FindChangedFilesOptions, VcsProvider, normalize_path};
 
 /// Errors from git-based changed file detection.
 #[derive(Debug)]
@@ -96,10 +96,30 @@ impl GitVcsProvider {
         )
     }
 
+    fn committed_deleted_since(root: &Path, base: &str) -> Result<Vec<String>, GitVcsError> {
+        Self::run_git(
+            root,
+            &[
+                "diff",
+                "--name-only",
+                "--relative",
+                "--diff-filter=D",
+                &format!("{base}...HEAD"),
+            ],
+        )
+    }
+
     fn staged_files(root: &Path) -> Result<Vec<String>, GitVcsError> {
         Self::run_git(
             root,
             &["diff", "--name-only", "--relative", "--cached", "--diff-filter=ACMR"],
+        )
+    }
+
+    fn staged_deleted(root: &Path) -> Result<Vec<String>, GitVcsError> {
+        Self::run_git(
+            root,
+            &["diff", "--name-only", "--relative", "--cached", "--diff-filter=D"],
         )
     }
 
@@ -110,12 +130,48 @@ impl GitVcsProvider {
         )
     }
 
-    fn resolve_paths(root: &Path, relative_paths: impl IntoIterator<Item = String>) -> Vec<PathBuf> {
+    fn unstaged_deleted(root: &Path) -> Result<Vec<String>, GitVcsError> {
+        Self::run_git(root, &["diff", "--name-only", "--relative", "--diff-filter=D"])
+    }
+
+    /// Old paths from renames (`R*` status lines).
+    fn rename_old_paths(root: &Path, cached: bool) -> Result<Vec<String>, GitVcsError> {
+        let mut args = vec!["diff", "--name-status", "--relative", "--diff-filter=R"];
+        if cached {
+            args.push("--cached");
+        }
+        Self::run_git(root, &args).map(|lines| {
+            lines
+                .into_iter()
+                .filter_map(|line| {
+                    let mut parts = line.split_whitespace();
+                    let status = parts.next()?;
+                    if !status.starts_with('R') {
+                        return None;
+                    }
+                    // Format: R100 old/path new/path
+                    Some(parts.next()?.to_string())
+                })
+                .collect()
+        })
+    }
+
+    fn resolve_modified_paths(
+        root: &Path,
+        relative_paths: impl IntoIterator<Item = String>,
+    ) -> Vec<PathBuf> {
         relative_paths
             .into_iter()
             .map(|relative| root.join(relative))
             .filter(|path| path.is_file())
             .collect()
+    }
+
+    fn resolve_deleted_paths(
+        root: &Path,
+        relative_paths: impl IntoIterator<Item = String>,
+    ) -> Vec<PathBuf> {
+        relative_paths.into_iter().map(|relative| root.join(relative)).collect()
     }
 
     fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -127,16 +183,43 @@ impl GitVcsProvider {
             })
             .collect()
     }
+
+    fn collect_deleted(root: &Path, options: &FindChangedFilesOptions) -> Result<Vec<String>, GitVcsError> {
+        let mut paths = if options.staged_only {
+            Self::staged_deleted(root)?
+        } else if let Some(base) = &options.changed_since {
+            let mut paths = Self::committed_deleted_since(root, base)?;
+            paths.extend(Self::staged_deleted(root)?);
+            paths.extend(Self::unstaged_deleted(root)?);
+            paths
+        } else {
+            let mut paths = Self::staged_deleted(root)?;
+            paths.extend(Self::unstaged_deleted(root)?);
+            paths
+        };
+
+        if options.staged_only {
+            paths.extend(Self::rename_old_paths(root, true)?);
+        } else if options.changed_since.is_some() {
+            paths.extend(Self::rename_old_paths(root, true)?);
+            paths.extend(Self::rename_old_paths(root, false)?);
+        } else {
+            paths.extend(Self::rename_old_paths(root, true)?);
+            paths.extend(Self::rename_old_paths(root, false)?);
+        }
+
+        Ok(paths)
+    }
 }
 
 impl VcsProvider for GitVcsProvider {
     fn find_changed_files(
         &self,
         options: &FindChangedFilesOptions,
-    ) -> Result<Vec<PathBuf>, GitVcsError> {
+    ) -> Result<ChangedPaths, GitVcsError> {
         let root = Self::git_root(&options.cwd)?;
 
-        let relative_paths = if options.staged_only {
+        let relative_modified = if options.staged_only {
             Self::staged_files(&root)?
         } else if let Some(base) = &options.changed_since {
             let mut paths = Self::committed_since(&root, base)?;
@@ -149,7 +232,12 @@ impl VcsProvider for GitVcsProvider {
             paths
         };
 
-        Ok(Self::dedupe_paths(Self::resolve_paths(&root, relative_paths)))
+        let relative_deleted = Self::collect_deleted(&root, options)?;
+
+        Ok(ChangedPaths {
+            modified: Self::dedupe_paths(Self::resolve_modified_paths(&root, relative_modified)),
+            deleted: Self::dedupe_paths(Self::resolve_deleted_paths(&root, relative_deleted)),
+        })
     }
 }
 
@@ -224,7 +312,11 @@ mod tests {
             })
             .unwrap();
 
-        let names: Vec<_> = changed.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<_> = changed
+            .modified
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert!(names.contains(&"staged.js".to_string()));
         assert!(names.contains(&"unstaged.js".to_string()));
         assert!(!names.contains(&"committed.js".to_string()));
@@ -252,12 +344,16 @@ mod tests {
             })
             .unwrap();
 
-        let names: Vec<_> = changed.iter().map(|p| p.file_name().unwrap().to_string_lossy().into_owned()).collect();
+        let names: Vec<_> = changed
+            .modified
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
         assert_eq!(names, vec!["staged.js".to_string()]);
     }
 
     #[test]
-    fn deleted_files_are_filtered_out() {
+    fn deleted_files_are_tracked_separately() {
         let temp = TempDir::new().unwrap();
         let root = temp.path();
         init_git_repo(root);
@@ -277,7 +373,11 @@ mod tests {
             })
             .unwrap();
 
-        assert!(changed.is_empty());
+        assert!(changed.modified.is_empty());
+        assert_eq!(
+            changed.deleted.iter().map(|p| p.file_name().unwrap()).collect::<Vec<_>>(),
+            vec![std::ffi::OsStr::new("remove.js")]
+        );
     }
 
     #[test]

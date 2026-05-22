@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use oxc_linter::{LintService, LintServiceOptions, Linter, LintOptions, OsFileSystem, ConfigStore};
+use oxc_linter::{ConfigStore, LintOptions, LintService, LintServiceOptions, Linter, OsFileSystem};
 use oxc_vcs::{
     DEFAULT_FORCE_RERUN_TRIGGERS, FindChangedFilesOptions, GitVcsError, GitVcsProvider,
     VcsProvider, matches_force_rerun_trigger, normalize_path,
@@ -17,6 +17,7 @@ use crate::{
 
 pub struct ChangedFilterResult {
     pub changed_paths: FxHashSet<PathBuf>,
+    pub deleted_paths: FxHashSet<PathBuf>,
     pub force_full_run: bool,
 }
 
@@ -26,12 +27,15 @@ pub fn resolve_changed_paths(
     options: &ChangedOptions,
 ) -> Result<ChangedFilterResult, GitVcsError> {
     let mut changed_paths = FxHashSet::default();
+    let mut deleted_paths = FxHashSet::default();
 
     if !options.related.is_empty() {
         for path in &options.related {
             let absolute = if path.is_absolute() { path.clone() } else { cwd.join(path) };
             if absolute.is_file() {
                 changed_paths.insert(normalize_path(&absolute, cwd));
+            } else {
+                deleted_paths.insert(normalize_path(&absolute, cwd));
             }
         }
     } else if options.staged || options.changed || options.since.is_some() {
@@ -41,17 +45,22 @@ pub fn resolve_changed_paths(
             changed_since: options.changed_since().map(str::to_string),
             staged_only: options.staged,
         })?;
-        for path in paths {
+        for path in paths.modified {
             changed_paths.insert(normalize_path(&path, cwd));
+        }
+        for path in paths.deleted {
+            deleted_paths.insert(normalize_path(&path, cwd));
         }
     }
 
-    let force_full_run = matches_force_rerun_trigger(
-        &changed_paths.iter().cloned().collect::<Vec<_>>(),
-        DEFAULT_FORCE_RERUN_TRIGGERS,
-    );
+    let all_for_triggers = changed_paths
+        .iter()
+        .chain(deleted_paths.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    let force_full_run = matches_force_rerun_trigger(&all_for_triggers, DEFAULT_FORCE_RERUN_TRIGGERS);
 
-    Ok(ChangedFilterResult { changed_paths, force_full_run })
+    Ok(ChangedFilterResult { changed_paths, deleted_paths, force_full_run })
 }
 
 /// Apply changed-file filtering to lint candidates.
@@ -69,7 +78,8 @@ pub fn filter_files_by_changed(
         return candidates;
     }
 
-    if !use_cross_module && !changed.changed_paths.is_empty() {
+    let has_deleted = !changed.deleted_paths.is_empty();
+    if !use_cross_module && (!changed.changed_paths.is_empty() || has_deleted) {
         print_and_flush_stdout(
             stdout,
             "warning: --changed without --import-plugin only lints files in git diff, not their importers\n",
@@ -78,6 +88,11 @@ pub fn filter_files_by_changed(
 
     let normalized_changed: FxHashSet<PathBuf> = changed
         .changed_paths
+        .iter()
+        .map(|path| normalize_path(path, cwd))
+        .collect();
+    let normalized_deleted: FxHashSet<PathBuf> = changed
+        .deleted_paths
         .iter()
         .map(|path| normalize_path(path, cwd))
         .collect();
@@ -91,7 +106,12 @@ pub fn filter_files_by_changed(
             Linter::new(LintOptions::default(), config_store.clone(), external_linter.cloned()),
             lint_options,
         );
-        lint_service.filter_paths_by_changed(&OsFileSystem, candidates, &normalized_changed)
+        lint_service.filter_paths_by_changed(
+            &OsFileSystem,
+            candidates,
+            &normalized_changed,
+            &normalized_deleted,
+        )
     } else {
         candidates
             .into_iter()

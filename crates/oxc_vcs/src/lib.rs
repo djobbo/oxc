@@ -6,13 +6,22 @@ pub use options::{FindChangedFilesOptions, ForceRerunTrigger, DEFAULT_FORCE_RERU
 
 use std::path::{Path, PathBuf};
 
+/// Changed paths discovered from version control.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChangedPaths {
+    /// Existing files that were added, copied, modified, or renamed (new path).
+    pub modified: Vec<PathBuf>,
+    /// Paths that were deleted or renamed (old path). These files may no longer exist on disk.
+    pub deleted: Vec<PathBuf>,
+}
+
 /// Finds files changed according to version control.
 pub trait VcsProvider {
-    /// Returns absolute paths of changed files.
+    /// Returns absolute paths of changed files, split into modified and deleted sets.
     fn find_changed_files(
         &self,
         options: &FindChangedFilesOptions,
-    ) -> Result<Vec<PathBuf>, GitVcsError>;
+    ) -> Result<ChangedPaths, GitVcsError>;
 }
 
 /// Normalize a path for set comparisons.

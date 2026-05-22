@@ -1170,19 +1170,22 @@ impl Runtime {
         Ok((ResolvedModuleRecord { module_record, resolved_module_requests }, semantic, tokens))
     }
 
-    /// Keep candidates that are changed or import changed modules (when resolver is enabled).
+    /// Keep candidates that are changed, import changed modules, or import deleted modules.
     pub(super) fn filter_paths_by_changed(
         &self,
         file_system: &(dyn RuntimeFileSystem + Sync + Send),
         candidates: Vec<Arc<OsStr>>,
         changed: &FxHashSet<PathBuf>,
+        deleted: &FxHashSet<PathBuf>,
     ) -> Vec<Arc<OsStr>> {
-        if changed.is_empty() {
+        if changed.is_empty() && deleted.is_empty() {
             return vec![];
         }
 
         let normalized_changed: FxHashSet<PathBuf> =
             changed.iter().map(|path| Self::normalize_for_compare(path)).collect();
+        let normalized_deleted: FxHashSet<PathBuf> =
+            deleted.iter().map(|path| Self::normalize_for_compare(path)).collect();
 
         let candidate_set: IndexSet<Arc<OsStr>, FxBuildHasher> =
             candidates.iter().cloned().collect();
@@ -1202,6 +1205,11 @@ impl Runtime {
                     &candidate_set,
                     path,
                     &normalized_changed,
+                ) || self.imports_deleted_module(
+                    file_system,
+                    &candidate_set,
+                    path,
+                    &normalized_deleted,
                 )
             })
             .collect()
@@ -1264,6 +1272,85 @@ impl Runtime {
                         return true;
                     }
                     stack.push(dep_path.to_path_buf());
+                }
+            }
+        }
+
+        false
+    }
+
+    fn imports_deleted_module(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: &IndexSet<Arc<OsStr>, FxBuildHasher>,
+        entry: &Arc<OsStr>,
+        deleted: &FxHashSet<PathBuf>,
+    ) -> bool {
+        if deleted.is_empty() {
+            return false;
+        }
+        let Some(resolver) = &self.resolver else {
+            return false;
+        };
+
+        let importer = Path::new(entry.as_ref());
+        let Some(output) = self.process_path_to_module(
+            file_system,
+            candidates,
+            entry,
+            false,
+            None,
+        ) else {
+            return false;
+        };
+
+        for record_result in &output.section_module_records {
+            let Ok(record) = record_result.as_ref() else {
+                continue;
+            };
+
+            for request in &record.resolved_module_requests {
+                let normalized =
+                    Self::normalize_for_compare(Path::new(request.resolved_requested_path.as_ref()));
+                if deleted.contains(&normalized) {
+                    return true;
+                }
+            }
+
+            for specifier in record.module_record.requested_modules.keys() {
+                if let Ok(resolution) = resolver.resolve_file(importer, specifier) {
+                    let normalized = Self::normalize_for_compare(resolution.path());
+                    if deleted.contains(&normalized) {
+                        return true;
+                    }
+                } else if Self::specifier_targets_deleted(importer, specifier.as_str(), deleted) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn specifier_targets_deleted(
+        importer: &Path,
+        specifier: &str,
+        deleted: &FxHashSet<PathBuf>,
+    ) -> bool {
+        let base = importer.parent().unwrap_or_else(|| Path::new("."));
+        let joined = base.join(specifier);
+
+        for deleted_path in deleted {
+            let normalized_deleted = Self::normalize_for_compare(deleted_path);
+            if Self::normalize_for_compare(&joined) == normalized_deleted {
+                return true;
+            }
+            if joined.extension().is_some() {
+                continue;
+            }
+            for ext in VALID_EXTENSIONS {
+                if Self::normalize_for_compare(&joined.with_extension(ext)) == normalized_deleted {
+                    return true;
                 }
             }
         }

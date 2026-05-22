@@ -389,7 +389,10 @@ impl CliRunner {
                 }
             };
 
-            if changed.changed_paths.is_empty() && !changed.force_full_run {
+            if changed.changed_paths.is_empty()
+                && changed.deleted_paths.is_empty()
+                && !changed.force_full_run
+            {
                 return Self::handle_no_files_found(
                     stdout,
                     &output_formatter,
@@ -1119,6 +1122,91 @@ mod test {
                 "src",
             ]);
         assert!(matches!(result, crate::cli::CliRunResult::LintSucceeded));
+    }
+
+    #[test]
+    fn changed_related_deleted_file_lints_importers() {
+        use std::fs;
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/utils.ts"), "export const x = 1;\n").unwrap();
+        fs::write(root.join("src/consumer.ts"), "import { x } from './utils';\nconsole.log(x);\n")
+            .unwrap();
+        fs::write(root.join("src/unrelated.ts"), "export const y = 2;\n").unwrap();
+        fs::remove_file(root.join("src/utils.ts")).unwrap();
+
+        let output = Tester::new().with_cwd(root.to_path_buf()).test_output_verbose(&[
+            "--import-plugin",
+            "--related",
+            "src/utils.ts",
+            "--debug",
+            "files",
+            "src",
+        ]);
+        assert!(output.contains("consumer.ts"), "expected consumer.ts, got:\n{output}");
+        assert!(!output.contains("unrelated.ts"), "unexpected unrelated.ts in:\n{output}");
+    }
+
+    #[test]
+    fn changed_staged_delete_lints_importers() {
+        use std::{fs, process::Command};
+
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src/utils.ts"), "export const x = 1;\n").unwrap();
+        fs::write(root.join("src/consumer.ts"), "import { x } from './utils';\nconsole.log(x);\n")
+            .unwrap();
+        fs::write(root.join("src/unrelated.ts"), "export const y = 2;\n").unwrap();
+
+        assert!(Command::new("git").args(["init"]).current_dir(root).status().unwrap().success());
+        assert!(
+            Command::new("git")
+                .args(["config", "user.email", "test@example.com"])
+                .current_dir(root)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(
+            Command::new("git")
+                .args(["config", "user.name", "Test"])
+                .current_dir(root)
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert!(Command::new("git").args(["add", "-A"]).current_dir(root).status().unwrap().success());
+        assert!(
+            Command::new("git")
+                .args(["commit", "-m", "initial"])
+                .current_dir(root)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        fs::remove_file(root.join("src/utils.ts")).unwrap();
+        assert!(
+            Command::new("git")
+                .args(["add", "src/utils.ts"])
+                .current_dir(root)
+                .status()
+                .unwrap()
+                .success()
+        );
+
+        let output = Tester::new().with_cwd(root.to_path_buf()).test_output_verbose(&[
+            "--import-plugin",
+            "--staged",
+            "--debug",
+            "files",
+            "src",
+        ]);
+        assert!(output.contains("consumer.ts"), "expected consumer.ts, got:\n{output}");
+        assert!(!output.contains("unrelated.ts"), "unexpected unrelated.ts in:\n{output}");
     }
 
     #[test]
