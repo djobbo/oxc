@@ -174,13 +174,11 @@ impl GitVcsProvider {
         relative_paths.into_iter().map(|relative| root.join(relative)).collect()
     }
 
-    fn dedupe_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    fn dedupe_paths(root: &Path, paths: Vec<PathBuf>) -> Vec<PathBuf> {
         let mut seen = FxHashSet::default();
         paths
             .into_iter()
-            .filter(|path| {
-                seen.insert(normalize_path(path, path.parent().unwrap_or(Path::new("."))))
-            })
+            .filter(|path| seen.insert(normalize_path(path, root)))
             .collect()
     }
 
@@ -232,8 +230,8 @@ impl VcsProvider for GitVcsProvider {
         let relative_deleted = Self::collect_deleted(&root, options)?;
 
         Ok(ChangedPaths {
-            modified: Self::dedupe_paths(Self::resolve_modified_paths(&root, relative_modified)),
-            deleted: Self::dedupe_paths(Self::resolve_deleted_paths(&root, relative_deleted)),
+            modified: Self::dedupe_paths(&root, Self::resolve_modified_paths(&root, relative_modified)),
+            deleted: Self::dedupe_paths(&root, Self::resolve_deleted_paths(&root, relative_deleted)),
         })
     }
 }
