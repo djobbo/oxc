@@ -378,14 +378,14 @@ impl CliRunner {
                         stdout,
                         "Could not determine changed files: not a git repository.\nUse --related to pass explicit changed paths.\n",
                     );
-                    return CliRunResult::InvalidOptionChangedNotGitRepo;
+                    return CliRunResult::InvalidOptionChangedVcs;
                 }
                 Err(err) => {
                     print_and_flush_stdout(
                         stdout,
                         &format!("Could not determine changed files: {err}\n"),
                     );
-                    return CliRunResult::InvalidOptionChangedNotGitRepo;
+                    return CliRunResult::InvalidOptionChangedVcs;
                 }
             };
 
