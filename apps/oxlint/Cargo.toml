@@ -82,6 +82,7 @@ napi-build = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 lazy-regex = { workspace = true }
+oxc_vcs = { workspace = true, features = ["testing"] }
 
 [features]
 default = ["napi"]

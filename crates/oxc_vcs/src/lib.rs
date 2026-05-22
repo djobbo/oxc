@@ -6,6 +6,9 @@ mod options;
 pub use git::{GitVcsError, GitVcsProvider};
 pub use options::{FindChangedFilesOptions, ForceRerunTrigger, DEFAULT_FORCE_RERUN_TRIGGERS};
 
+#[cfg(any(test, feature = "testing"))]
+pub mod test_helpers;
+
 use std::path::{Path, PathBuf};
 
 use cow_utils::CowUtils;

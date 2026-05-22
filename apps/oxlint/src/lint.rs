@@ -1151,7 +1151,9 @@ mod test {
 
     #[test]
     fn changed_staged_delete_lints_importers() {
-        use std::{fs, process::Command};
+        use std::fs;
+
+        use oxc_vcs::test_helpers::{commit_all, init_git_repo, stage_paths};
 
         let temp = tempfile::tempdir().expect("tempdir");
         let root = temp.path();
@@ -1161,42 +1163,11 @@ mod test {
             .unwrap();
         fs::write(root.join("src/unrelated.ts"), "export const y = 2;\n").unwrap();
 
-        assert!(Command::new("git").args(["init"]).current_dir(root).status().unwrap().success());
-        assert!(
-            Command::new("git")
-                .args(["config", "user.email", "test@example.com"])
-                .current_dir(root)
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(
-            Command::new("git")
-                .args(["config", "user.name", "Test"])
-                .current_dir(root)
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(Command::new("git").args(["add", "-A"]).current_dir(root).status().unwrap().success());
-        assert!(
-            Command::new("git")
-                .args(["commit", "-m", "initial"])
-                .current_dir(root)
-                .status()
-                .unwrap()
-                .success()
-        );
+        init_git_repo(root);
+        commit_all(root, "initial");
 
         fs::remove_file(root.join("src/utils.ts")).unwrap();
-        assert!(
-            Command::new("git")
-                .args(["add", "src/utils.ts"])
-                .current_dir(root)
-                .status()
-                .unwrap()
-                .success()
-        );
+        stage_paths(root, &["src/utils.ts"]);
 
         let output = Tester::new().with_cwd(root.to_path_buf()).test_output_verbose(&[
             "--import-plugin",

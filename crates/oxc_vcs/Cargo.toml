@@ -20,6 +20,9 @@ workspace = true
 test = true
 doctest = false
 
+[features]
+testing = []
+
 [dependencies]
 cow-utils = { workspace = true }
 fast-glob = { workspace = true }

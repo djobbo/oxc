@@ -238,51 +238,12 @@ impl VcsProvider for GitVcsProvider {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, process::Command};
+    use std::fs;
 
     use tempfile::TempDir;
 
     use super::*;
-    use crate::options::DEFAULT_FORCE_RERUN_TRIGGERS;
-
-    fn init_git_repo(dir: &Path) {
-        assert!(Command::new("git").args(["init"]).current_dir(dir).status().unwrap().success());
-        assert!(
-            Command::new("git")
-                .args(["config", "user.email", "test@example.com"])
-                .current_dir(dir)
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(
-            Command::new("git")
-                .args(["config", "user.name", "Test"])
-                .current_dir(dir)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
-
-    fn commit_all(dir: &Path, message: &str) {
-        assert!(
-            Command::new("git")
-                .args(["add", "-A"])
-                .current_dir(dir)
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert!(
-            Command::new("git")
-                .args(["commit", "-m", message])
-                .current_dir(dir)
-                .status()
-                .unwrap()
-                .success()
-        );
-    }
+    use crate::{options::DEFAULT_FORCE_RERUN_TRIGGERS, test_helpers::{commit_all, init_git_repo, stage_paths}};
 
     #[test]
     fn uncommitted_changes_include_staged_and_unstaged() {
@@ -294,7 +255,7 @@ mod tests {
         commit_all(root, "initial");
 
         fs::write(root.join("staged.js"), "console.log('staged');").unwrap();
-        assert!(Command::new("git").args(["add", "staged.js"]).current_dir(root).status().unwrap().success());
+        stage_paths(root, &["staged.js"]);
 
         fs::write(root.join("unstaged.js"), "console.log('unstaged');").unwrap();
 
@@ -327,7 +288,7 @@ mod tests {
         commit_all(root, "initial");
 
         fs::write(root.join("staged.js"), "console.log('staged');").unwrap();
-        assert!(Command::new("git").args(["add", "staged.js"]).current_dir(root).status().unwrap().success());
+        stage_paths(root, &["staged.js"]);
         fs::write(root.join("unstaged.js"), "console.log('unstaged');").unwrap();
 
         let provider = GitVcsProvider;
@@ -357,7 +318,7 @@ mod tests {
         commit_all(root, "initial");
 
         fs::remove_file(root.join("remove.js")).unwrap();
-        assert!(Command::new("git").args(["add", "remove.js"]).current_dir(root).status().unwrap().success());
+        stage_paths(root, &["remove.js"]);
 
         let provider = GitVcsProvider;
         let changed = provider
