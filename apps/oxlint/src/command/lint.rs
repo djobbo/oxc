@@ -571,7 +571,7 @@ pub struct ChangedOptions {
     pub changed: bool,
 
     /// Git ref to compare against for committed changes (also includes staged and unstaged).
-    /// Alias for `--changed <REF>` (Biome compatibility).
+    /// Equivalent to `--changed <REF>`.
     #[bpaf(long("since"), argument("REF"), hide_usage)]
     pub since: Option<String>,
 

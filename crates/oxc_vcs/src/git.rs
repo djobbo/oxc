@@ -40,7 +40,7 @@ impl From<io::Error> for GitVcsError {
 
 /// Git-based implementation of [`VcsProvider`].
 ///
-/// Mirrors Vitest's `GitVCSProvider` with Biome's `--diff-filter=ACMR` and deleted-file filtering.
+/// Uses `--diff-filter=ACMR` for modified paths and `--diff-filter=D` for deletions.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GitVcsProvider;
 
