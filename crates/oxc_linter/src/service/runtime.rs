@@ -1169,4 +1169,165 @@ impl Runtime {
         }
         Ok((ResolvedModuleRecord { module_record, resolved_module_requests }, semantic, tokens))
     }
+
+    /// Keep candidates that are changed, import changed modules, or import deleted modules.
+    pub(super) fn filter_paths_by_changed(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: Vec<Arc<OsStr>>,
+        changed: &FxHashSet<PathBuf>,
+        deleted: &FxHashSet<PathBuf>,
+    ) -> Vec<Arc<OsStr>> {
+        if changed.is_empty() && deleted.is_empty() {
+            return vec![];
+        }
+
+        let candidate_set: IndexSet<Arc<OsStr>, FxBuildHasher> =
+            candidates.iter().cloned().collect();
+
+        candidates
+            .into_iter()
+            .filter(|path| {
+                let normalized = self.normalize_for_compare(Path::new(path.as_ref()));
+                if changed.contains(&normalized) {
+                    return true;
+                }
+                if self.resolver.is_none() {
+                    return false;
+                }
+                self.imports_changed_file(file_system, &candidate_set, path, changed)
+                    || self.imports_deleted_module(file_system, &candidate_set, path, deleted)
+            })
+            .collect()
+    }
+
+    /// Must stay in sync with [`oxc_vcs::normalize_path`].
+    fn normalize_for_compare(&self, path: &Path) -> PathBuf {
+        path.canonicalize().unwrap_or_else(|_| {
+            if path.is_absolute() { path.to_path_buf() } else { self.cwd.join(path) }
+        })
+    }
+
+    fn is_node_modules(path: &Path) -> bool {
+        path.components().any(|component| component.as_os_str() == "node_modules")
+    }
+
+    fn imports_changed_file(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: &IndexSet<Arc<OsStr>, FxBuildHasher>,
+        entry: &Arc<OsStr>,
+        changed: &FxHashSet<PathBuf>,
+    ) -> bool {
+        let mut visited = FxHashSet::<PathBuf>::default();
+        let mut stack = vec![PathBuf::from(entry.as_ref())];
+
+        while let Some(path) = stack.pop() {
+            let normalized = self.normalize_for_compare(&path);
+            if !visited.insert(normalized.clone()) {
+                continue;
+            }
+
+            let path_arc: Arc<OsStr> = Arc::from(path.as_os_str());
+            let Some(output) =
+                self.process_path_to_module(file_system, candidates, &path_arc, false, None)
+            else {
+                continue;
+            };
+
+            for record_result in &output.section_module_records {
+                let Ok(record) = record_result.as_ref() else {
+                    continue;
+                };
+                for request in &record.resolved_module_requests {
+                    let dep_path = Path::new(request.resolved_requested_path.as_ref());
+                    if Self::is_node_modules(dep_path) {
+                        continue;
+                    }
+                    let normalized_dep = self.normalize_for_compare(dep_path);
+                    if changed.contains(&normalized_dep) {
+                        return true;
+                    }
+                    stack.push(dep_path.to_path_buf());
+                }
+            }
+        }
+
+        false
+    }
+
+    fn imports_deleted_module(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: &IndexSet<Arc<OsStr>, FxBuildHasher>,
+        entry: &Arc<OsStr>,
+        deleted: &FxHashSet<PathBuf>,
+    ) -> bool {
+        if deleted.is_empty() {
+            return false;
+        }
+        let Some(resolver) = &self.resolver else {
+            return false;
+        };
+
+        let importer = Path::new(entry.as_ref());
+        let Some(output) = self.process_path_to_module(file_system, candidates, entry, false, None)
+        else {
+            return false;
+        };
+
+        for record_result in &output.section_module_records {
+            let Ok(record) = record_result.as_ref() else {
+                continue;
+            };
+
+            for request in &record.resolved_module_requests {
+                let normalized =
+                    self.normalize_for_compare(Path::new(request.resolved_requested_path.as_ref()));
+                if deleted.contains(&normalized) {
+                    return true;
+                }
+            }
+
+            for specifier in record.module_record.requested_modules.keys() {
+                if let Ok(resolution) = resolver.resolve_file(importer, specifier) {
+                    let normalized = self.normalize_for_compare(resolution.path());
+                    if deleted.contains(&normalized) {
+                        return true;
+                    }
+                } else if self.specifier_targets_deleted(importer, specifier.as_str(), deleted) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    fn specifier_targets_deleted(
+        &self,
+        importer: &Path,
+        specifier: &str,
+        deleted: &FxHashSet<PathBuf>,
+    ) -> bool {
+        let base = importer.parent().unwrap_or_else(|| Path::new("."));
+        let joined = base.join(specifier);
+
+        for deleted_path in deleted {
+            let normalized_deleted = self.normalize_for_compare(deleted_path);
+            if self.normalize_for_compare(&joined) == normalized_deleted {
+                return true;
+            }
+            if joined.extension().is_some() {
+                continue;
+            }
+            for ext in VALID_EXTENSIONS {
+                if self.normalize_for_compare(&joined.with_extension(ext)) == normalized_deleted {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
 }

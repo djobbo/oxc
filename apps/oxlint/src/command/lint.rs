@@ -68,6 +68,9 @@ pub struct LintCommand {
     #[bpaf(external)]
     pub suppression_options: SuppressionOptions,
 
+    #[bpaf(external)]
+    pub changed_options: ChangedOptions,
+
     /// Single file, single path or list of paths
     #[bpaf(positional("PATH"), many, guard(validate_paths, PATHS_ERROR_MESSAGE))]
     pub paths: Vec<PathBuf>,
@@ -559,6 +562,48 @@ pub struct InlineConfigOptions {
     pub report_unused_directives: ReportUnusedDirectives,
 }
 
+/// Changed-file filtering (git / explicit paths)
+#[derive(Debug, Clone, Bpaf, Default)]
+pub struct ChangedOptions {
+    /// Lint only files changed in version control (staged and unstaged).
+    /// Combine with `--since <REF>` to also include committed changes since that ref.
+    #[bpaf(long("changed"), switch, hide_usage)]
+    pub changed: bool,
+
+    /// Git ref to compare against for committed changes (also includes staged and unstaged).
+    /// Equivalent to `--changed <REF>`.
+    #[bpaf(long("since"), argument("REF"), hide_usage)]
+    pub since: Option<String>,
+
+    /// Lint only staged files. Cannot be combined with `--changed`.
+    #[bpaf(long("staged"), switch, hide_usage)]
+    pub staged: bool,
+
+    /// Explicit changed paths (skip git). Useful for lint-staged.
+    #[bpaf(long("related"), argument("PATH"), many, hide_usage)]
+    pub related: Vec<PathBuf>,
+}
+
+impl ChangedOptions {
+    #[must_use]
+    pub fn is_active(&self) -> bool {
+        self.changed || self.since.is_some() || self.staged || !self.related.is_empty()
+    }
+
+    /// Returns the git base ref when committed changes should be included.
+    #[must_use]
+    pub fn changed_since(&self) -> Option<&str> {
+        self.since.as_deref()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.changed && self.staged {
+            return Err("The `--changed` and `--staged` flags cannot be used together.".into());
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod plugins {
     use oxc_linter::LintPlugins;
@@ -816,6 +861,30 @@ mod lint_options {
         let options = get_lint_options("--suppress-all --prune-suppressions");
         assert!(options.suppression_options.prune_suppressions);
         assert!(options.suppression_options.suppress_all);
+    }
+
+    #[test]
+    fn changed_flags() {
+        let options = get_lint_options("--changed --since origin/main .");
+        assert!(options.changed_options.changed);
+        assert_eq!(options.changed_options.since.as_deref(), Some("origin/main"));
+
+        let options = get_lint_options("--staged .");
+        assert!(options.changed_options.staged);
+
+        let options = get_lint_options(". --related src/a.ts --related src/b.ts");
+        assert_eq!(
+            options.changed_options.related,
+            [PathBuf::from("src/a.ts"), PathBuf::from("src/b.ts")]
+        );
+    }
+
+    #[test]
+    fn changed_and_staged_are_exclusive() {
+        use crate::{cli::CliRunResult, tester::Tester};
+
+        let (_output, result) = Tester::new().test_output(&["--changed", "--staged", "."]);
+        assert!(matches!(result, CliRunResult::InvalidOptionChangedWithStaged));
     }
 }
 

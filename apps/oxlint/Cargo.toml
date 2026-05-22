@@ -36,6 +36,7 @@ oxc_diagnostics = { workspace = true }
 oxc_estree_tokens = { workspace = true }
 oxc_language_server = { workspace = true }
 oxc_linter = { workspace = true }
+oxc_vcs = { workspace = true }
 oxc_napi = { workspace = true }
 oxc_parser = { workspace = true }
 oxc_semantic = { workspace = true }
@@ -81,6 +82,7 @@ napi-build = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 lazy-regex = { workspace = true }
+oxc_vcs = { workspace = true, features = ["testing"] }
 
 [features]
 default = ["napi"]

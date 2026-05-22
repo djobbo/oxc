@@ -1,0 +1,77 @@
+//! Version-control helpers for discovering changed files (used by oxlint and other tools).
+
+mod error;
+mod git;
+mod options;
+
+pub use error::VcsError;
+pub use git::{GitVcsError, GitVcsProvider};
+pub use options::{DEFAULT_FORCE_RERUN_TRIGGERS, FindChangedFilesOptions, ForceRerunTrigger};
+
+#[cfg(any(test, feature = "testing"))]
+pub mod test_helpers;
+
+use std::path::{Path, PathBuf};
+
+use cow_utils::CowUtils;
+
+/// Changed paths discovered from version control.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChangedPaths {
+    /// Existing files that were added, copied, modified, or renamed (new path).
+    pub modified: Vec<PathBuf>,
+    /// Paths that were deleted or renamed (old path). These files may no longer exist on disk.
+    pub deleted: Vec<PathBuf>,
+}
+
+/// Finds files changed according to version control.
+pub trait VcsProvider {
+    /// Returns absolute paths of changed files, split into modified and deleted sets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VcsError`] when the repository cannot be located or a provider command fails.
+    fn find_changed_files(
+        &self,
+        options: &FindChangedFilesOptions,
+    ) -> Result<ChangedPaths, VcsError>;
+}
+
+/// Normalize a path for set comparisons.
+///
+/// Uses [`Path::canonicalize`] when possible, otherwise absolute resolution from `cwd`.
+///
+/// Must stay in sync with `oxc_linter::service::runtime::Runtime::normalize_for_compare`.
+#[must_use]
+pub fn normalize_path(path: &Path, cwd: &Path) -> PathBuf {
+    path.canonicalize()
+        .unwrap_or_else(|_| if path.is_absolute() { path.to_path_buf() } else { cwd.join(path) })
+}
+
+/// Returns `true` when any changed path matches a force-rerun trigger glob.
+#[must_use]
+pub fn matches_force_rerun_trigger(
+    changed_paths: &[PathBuf],
+    triggers: &[ForceRerunTrigger],
+) -> bool {
+    changed_paths.iter().any(|path| {
+        let path_lossy = path.to_string_lossy();
+        let path_str = path_lossy.cow_replace('\\', "/");
+        triggers.iter().any(|trigger| fast_glob::glob_match(*trigger, path_str.as_ref()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::{DEFAULT_FORCE_RERUN_TRIGGERS, matches_force_rerun_trigger};
+
+    #[test]
+    fn force_rerun_triggers_match_config_files() {
+        let changed = vec![PathBuf::from("/project/package.json")];
+        assert!(matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
+        let changed = vec![PathBuf::from("/project/src/utils.ts")];
+        assert!(!matches_force_rerun_trigger(&changed, DEFAULT_FORCE_RERUN_TRIGGERS));
+    }
+}
