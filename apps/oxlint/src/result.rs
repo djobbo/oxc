@@ -11,6 +11,8 @@ pub enum CliRunResult {
     InvalidOptionSeverityWithoutFilter,
     InvalidOptionSeverityWithoutPluginName,
     InvalidOptionSeverityWithoutRuleName,
+    InvalidOptionChangedWithStaged,
+    InvalidOptionChangedNotGitRepo,
     LintSucceeded,
     LintFoundErrors,
     LintUnprunedSuppressions,
@@ -43,6 +45,8 @@ impl Termination for CliRunResult {
             | Self::InvalidOptionSeverityWithoutFilter
             | Self::InvalidOptionSeverityWithoutPluginName
             | Self::InvalidOptionSeverityWithoutRuleName
+            | Self::InvalidOptionChangedWithStaged
+            | Self::InvalidOptionChangedNotGitRepo
             | Self::LintUnprunedSuppressions
             | Self::TsGoLintError => ExitCode::FAILURE,
         }

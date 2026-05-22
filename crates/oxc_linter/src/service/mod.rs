@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use oxc_diagnostics::DiagnosticSender;
 
@@ -104,6 +104,19 @@ impl LintService {
         tx_error: &DiagnosticSender,
     ) {
         self.runtime.collect_parse_diagnostics(file_system, paths, tx_error);
+    }
+
+    /// Filter lint candidates to those affected by changed files.
+    ///
+    /// When cross-module resolution is enabled, keeps files that directly changed or
+    /// transitively import a changed local module.
+    pub fn filter_paths_by_changed(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: Vec<Arc<OsStr>>,
+        changed: &FxHashSet<PathBuf>,
+    ) -> Vec<Arc<OsStr>> {
+        self.runtime.filter_paths_by_changed(file_system, candidates, changed)
     }
 
     /// For tests

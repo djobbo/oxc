@@ -21,6 +21,7 @@ use oxc_linter::{
 #[cfg(feature = "napi")]
 use crate::js_config::JsConfigLoaderCb;
 use crate::{
+    changed::{filter_files_by_changed, resolve_changed_paths},
     cli::{
         CliRunResult, DebugOption, LintCommand, MiscOptions, ReportUnusedDirectives, WarningOptions,
     },
@@ -87,8 +88,14 @@ impl CliRunner {
             disable_nested_config,
             inline_config_options,
             suppression_options,
+            changed_options,
             ..
         } = self.options;
+
+        if let Err(message) = changed_options.validate() {
+            print_and_flush_stdout(stdout, &format!("{message}\n"));
+            return CliRunResult::InvalidOptionChangedWithStaged;
+        }
 
         if basic_options.init {
             return crate::mode::run_init(&self.cwd, stdout);
@@ -336,18 +343,10 @@ impl CliRunner {
         let ignore_matcher =
             { LintIgnoreMatcher::new(&base_ignore_patterns, &self.cwd, nested_ignore_patterns) };
 
-        let files_to_lint = paths
+        let mut files_to_lint = paths
             .into_iter()
             .filter(|path| !ignore_matcher.should_ignore(Path::new(path)))
             .collect::<Vec<Arc<OsStr>>>();
-
-        if debug_files {
-            return crate::mode::run_debug_files(
-                files_to_lint.iter().map(|path| Path::new(path.as_ref())),
-                &self.cwd,
-                stdout,
-            );
-        }
 
         // If no external rules, discard `ExternalLinter`
         let mut external_linter = self.external_linter;
@@ -370,6 +369,56 @@ impl CliRunner {
         );
 
         let config_store = ConfigStore::new(lint_config, nested_configs, external_plugin_store);
+
+        if changed_options.is_active() {
+            let changed = match resolve_changed_paths(&self.cwd, &changed_options) {
+                Ok(changed) => changed,
+                Err(oxc_vcs::GitVcsError::NotAGitRepository) => {
+                    print_and_flush_stdout(
+                        stdout,
+                        "Could not determine changed files: not a git repository.\nUse --related to pass explicit changed paths.\n",
+                    );
+                    return CliRunResult::InvalidOptionChangedNotGitRepo;
+                }
+                Err(err) => {
+                    print_and_flush_stdout(
+                        stdout,
+                        &format!("Could not determine changed files: {err}\n"),
+                    );
+                    return CliRunResult::InvalidOptionChangedNotGitRepo;
+                }
+            };
+
+            if changed.changed_paths.is_empty() && !changed.force_full_run {
+                return Self::handle_no_files_found(
+                    stdout,
+                    &output_formatter,
+                    now,
+                    None,
+                    true,
+                );
+            }
+
+            files_to_lint = filter_files_by_changed(
+                &self.cwd,
+                files_to_lint,
+                &changed,
+                use_cross_module,
+                basic_options.tsconfig.as_deref(),
+                &config_store,
+                external_linter.as_ref(),
+                stdout,
+            );
+        }
+
+        if debug_files {
+            return crate::mode::run_debug_files(
+                files_to_lint.iter().map(|path| Path::new(path.as_ref())),
+                &self.cwd,
+                stdout,
+            );
+        }
+
         let type_check_only = self.options.type_check_only;
         let type_aware =
             type_check_only || self.options.type_aware || config_store.type_aware_enabled();
@@ -464,7 +513,7 @@ impl CliRunner {
                 &output_formatter,
                 now,
                 number_of_rules,
-                misc_options.no_error_on_unmatched_pattern,
+                misc_options.no_error_on_unmatched_pattern || changed_options.is_active(),
             );
         }
 
@@ -1027,6 +1076,49 @@ mod test {
     #[test]
     fn debug_files() {
         Tester::new().test_and_snapshot(&["--debug", "files", "fixtures/cli/linter"]);
+    }
+
+    #[test]
+    fn changed_related_with_import_plugin() {
+        let output = Tester::new()
+            .with_cwd("fixtures/cli/changed".into())
+            .test_output_verbose(&[
+                "--import-plugin",
+                "--related",
+                "src/utils.ts",
+                "--debug",
+                "files",
+                "src",
+            ]);
+        assert!(output.contains("utils.ts"));
+        assert!(output.contains("consumer.ts"));
+        assert!(!output.contains("unrelated.ts"));
+    }
+
+    #[test]
+    fn changed_related_without_import_plugin() {
+        let (output, result) = Tester::new().with_cwd("fixtures/cli/changed".into()).test_output(&[
+            "--related",
+            "src/utils.ts",
+            "--debug",
+            "files",
+            "src",
+        ]);
+        assert!(output.contains("warning: --changed without --import-plugin"));
+        assert!(output.contains("utils.ts"));
+        assert!(!output.contains("consumer.ts"));
+        assert!(matches!(result, crate::cli::CliRunResult::LintSucceeded));
+    }
+
+    #[test]
+    fn changed_related_no_matching_files_exits_success() {
+        let (_output, result) =
+            Tester::new().with_cwd("fixtures/cli/changed".into()).test_output(&[
+                "--related",
+                "src/does-not-exist.ts",
+                "src",
+            ]);
+        assert!(matches!(result, crate::cli::CliRunResult::LintSucceeded));
     }
 
     #[test]

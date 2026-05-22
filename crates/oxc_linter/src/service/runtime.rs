@@ -1169,4 +1169,105 @@ impl Runtime {
         }
         Ok((ResolvedModuleRecord { module_record, resolved_module_requests }, semantic, tokens))
     }
+
+    /// Keep candidates that are changed or import changed modules (when resolver is enabled).
+    pub(super) fn filter_paths_by_changed(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: Vec<Arc<OsStr>>,
+        changed: &FxHashSet<PathBuf>,
+    ) -> Vec<Arc<OsStr>> {
+        if changed.is_empty() {
+            return vec![];
+        }
+
+        let normalized_changed: FxHashSet<PathBuf> =
+            changed.iter().map(|path| Self::normalize_for_compare(path)).collect();
+
+        let candidate_set: IndexSet<Arc<OsStr>, FxBuildHasher> =
+            candidates.iter().cloned().collect();
+
+        candidates
+            .into_iter()
+            .filter(|path| {
+                let normalized = Self::normalize_for_compare(Path::new(path.as_ref()));
+                if normalized_changed.contains(&normalized) {
+                    return true;
+                }
+                if self.resolver.is_none() {
+                    return false;
+                }
+                self.imports_changed_file(
+                    file_system,
+                    &candidate_set,
+                    path,
+                    &normalized_changed,
+                )
+            })
+            .collect()
+    }
+
+    fn normalize_for_compare(path: &Path) -> PathBuf {
+        path.canonicalize().unwrap_or_else(|_| {
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(path))
+                    .unwrap_or_else(|_| path.to_path_buf())
+            }
+        })
+    }
+
+    fn is_node_modules(path: &Path) -> bool {
+        path.components().any(|component| component.as_os_str() == "node_modules")
+    }
+
+    fn imports_changed_file(
+        &self,
+        file_system: &(dyn RuntimeFileSystem + Sync + Send),
+        candidates: &IndexSet<Arc<OsStr>, FxBuildHasher>,
+        entry: &Arc<OsStr>,
+        changed: &FxHashSet<PathBuf>,
+    ) -> bool {
+        let mut visited = FxHashSet::<PathBuf>::default();
+        let mut stack = vec![PathBuf::from(entry.as_ref())];
+
+        while let Some(path) = stack.pop() {
+            let normalized = Self::normalize_for_compare(&path);
+            if !visited.insert(normalized.clone()) {
+                continue;
+            }
+
+            let path_arc: Arc<OsStr> = Arc::from(path.as_os_str());
+            let Some(output) = self.process_path_to_module(
+                file_system,
+                candidates,
+                &path_arc,
+                false,
+                None,
+            ) else {
+                continue;
+            };
+
+            for record_result in &output.section_module_records {
+                let Ok(record) = record_result.as_ref() else {
+                    continue;
+                };
+                for request in &record.resolved_module_requests {
+                    let dep_path = Path::new(request.resolved_requested_path.as_ref());
+                    if Self::is_node_modules(dep_path) {
+                        continue;
+                    }
+                    let normalized_dep = Self::normalize_for_compare(dep_path);
+                    if changed.contains(&normalized_dep) {
+                        return true;
+                    }
+                    stack.push(dep_path.to_path_buf());
+                }
+            }
+        }
+
+        false
+    }
 }

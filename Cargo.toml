@@ -147,6 +147,7 @@ oxc_language_server = { path = "crates/oxc_language_server", default-features = 
 oxc_linter = { path = "crates/oxc_linter" } # Linting engine
 oxc_macros = { path = "crates/oxc_macros" } # Proc macros
 oxc_config = { path = "crates/oxc_config" } # Config discovery
+oxc_vcs = { path = "crates/oxc_vcs" } # Version control changed files
 oxc_tasks_common = { path = "tasks/common" } # Task utilities
 oxc_tasks_transform_checker = { path = "tasks/transform_checker" } # Transform validation
 oxlint = { path = "apps/oxlint" } # Linter CLI

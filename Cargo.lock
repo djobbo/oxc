@@ -2610,6 +2610,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxc_vcs"
+version = "0.0.0"
+dependencies = [
+ "fast-glob",
+ "rustc-hash",
+ "tempfile",
+]
+
+[[package]]
 name = "oxfmt"
 version = "0.51.0"
 dependencies = [
@@ -2679,6 +2688,7 @@ dependencies = [
  "oxc_semantic",
  "oxc_span",
  "oxc_str",
+ "oxc_vcs",
  "rayon",
  "rustc-hash",
  "serde",
