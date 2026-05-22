@@ -6,7 +6,7 @@ mod options;
 
 pub use error::VcsError;
 pub use git::{GitVcsError, GitVcsProvider};
-pub use options::{FindChangedFilesOptions, ForceRerunTrigger, DEFAULT_FORCE_RERUN_TRIGGERS};
+pub use options::{DEFAULT_FORCE_RERUN_TRIGGERS, FindChangedFilesOptions, ForceRerunTrigger};
 
 #[cfg(any(test, feature = "testing"))]
 pub mod test_helpers;
@@ -42,13 +42,8 @@ pub trait VcsProvider {
 /// Uses [`Path::canonicalize`] when possible, otherwise absolute resolution from `cwd`.
 #[must_use]
 pub fn normalize_path(path: &Path, cwd: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| {
-        if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            cwd.join(path)
-        }
-    })
+    path.canonicalize()
+        .unwrap_or_else(|_| if path.is_absolute() { path.to_path_buf() } else { cwd.join(path) })
 }
 
 /// Returns `true` when any changed path matches a force-rerun trigger glob.

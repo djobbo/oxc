@@ -1,9 +1,6 @@
 //! Git repository helpers for integration tests.
 
-use std::{
-    path::Path,
-    process::Command,
-};
+use std::{path::Path, process::Command};
 
 /// Initialize a git repository with test user config.
 pub fn init_git_repo(dir: &Path) {

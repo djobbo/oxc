@@ -393,13 +393,7 @@ impl CliRunner {
                 && changed.deleted_paths.is_empty()
                 && !changed.force_full_run
             {
-                return Self::handle_no_files_found(
-                    stdout,
-                    &output_formatter,
-                    now,
-                    None,
-                    true,
-                );
+                return Self::handle_no_files_found(stdout, &output_formatter, now, None, true);
             }
 
             files_to_lint = filter_files_by_changed(
@@ -1083,16 +1077,14 @@ mod test {
 
     #[test]
     fn changed_related_with_import_plugin() {
-        let output = Tester::new()
-            .with_cwd("fixtures/cli/changed".into())
-            .test_output_verbose(&[
-                "--import-plugin",
-                "--related",
-                "src/utils.ts",
-                "--debug",
-                "files",
-                "src",
-            ]);
+        let output = Tester::new().with_cwd("fixtures/cli/changed".into()).test_output_verbose(&[
+            "--import-plugin",
+            "--related",
+            "src/utils.ts",
+            "--debug",
+            "files",
+            "src",
+        ]);
         assert!(output.contains("utils.ts"));
         assert!(output.contains("consumer.ts"));
         assert!(!output.contains("unrelated.ts"));
@@ -1100,13 +1092,9 @@ mod test {
 
     #[test]
     fn changed_related_without_import_plugin() {
-        let (output, result) = Tester::new().with_cwd("fixtures/cli/changed".into()).test_output(&[
-            "--related",
-            "src/utils.ts",
-            "--debug",
-            "files",
-            "src",
-        ]);
+        let (output, result) = Tester::new()
+            .with_cwd("fixtures/cli/changed".into())
+            .test_output(&["--related", "src/utils.ts", "--debug", "files", "src"]);
         assert!(output.contains("warning: changed-file filtering without --import-plugin"));
         assert!(output.contains("utils.ts"));
         assert!(!output.contains("consumer.ts"));
@@ -1115,12 +1103,9 @@ mod test {
 
     #[test]
     fn changed_related_no_matching_files_exits_success() {
-        let (_output, result) =
-            Tester::new().with_cwd("fixtures/cli/changed".into()).test_output(&[
-                "--related",
-                "src/does-not-exist.ts",
-                "src",
-            ]);
+        let (_output, result) = Tester::new()
+            .with_cwd("fixtures/cli/changed".into())
+            .test_output(&["--related", "src/does-not-exist.ts", "src"]);
         assert!(matches!(result, crate::cli::CliRunResult::LintSucceeded));
     }
 

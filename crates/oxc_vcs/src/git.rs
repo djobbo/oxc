@@ -46,10 +46,8 @@ pub struct GitVcsProvider;
 
 impl GitVcsProvider {
     fn git_root(cwd: &Path) -> Result<PathBuf, GitVcsError> {
-        let output = Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .current_dir(cwd)
-            .output()?;
+        let output =
+            Command::new("git").args(["rev-parse", "--show-toplevel"]).current_dir(cwd).output()?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -86,26 +84,14 @@ impl GitVcsProvider {
     fn committed_since(root: &Path, base: &str) -> Result<Vec<String>, GitVcsError> {
         Self::run_git(
             root,
-            &[
-                "diff",
-                "--name-only",
-                "--relative",
-                "--diff-filter=ACMR",
-                &format!("{base}...HEAD"),
-            ],
+            &["diff", "--name-only", "--relative", "--diff-filter=ACMR", &format!("{base}...HEAD")],
         )
     }
 
     fn committed_deleted_since(root: &Path, base: &str) -> Result<Vec<String>, GitVcsError> {
         Self::run_git(
             root,
-            &[
-                "diff",
-                "--name-only",
-                "--relative",
-                "--diff-filter=D",
-                &format!("{base}...HEAD"),
-            ],
+            &["diff", "--name-only", "--relative", "--diff-filter=D", &format!("{base}...HEAD")],
         )
     }
 
@@ -117,17 +103,11 @@ impl GitVcsProvider {
     }
 
     fn staged_deleted(root: &Path) -> Result<Vec<String>, GitVcsError> {
-        Self::run_git(
-            root,
-            &["diff", "--name-only", "--relative", "--cached", "--diff-filter=D"],
-        )
+        Self::run_git(root, &["diff", "--name-only", "--relative", "--cached", "--diff-filter=D"])
     }
 
     fn unstaged_files(root: &Path) -> Result<Vec<String>, GitVcsError> {
-        Self::run_git(
-            root,
-            &["ls-files", "--other", "--modified", "--exclude-standard"],
-        )
+        Self::run_git(root, &["ls-files", "--other", "--modified", "--exclude-standard"])
     }
 
     fn unstaged_deleted(root: &Path) -> Result<Vec<String>, GitVcsError> {
@@ -176,13 +156,13 @@ impl GitVcsProvider {
 
     fn dedupe_paths(root: &Path, paths: Vec<PathBuf>) -> Vec<PathBuf> {
         let mut seen = FxHashSet::default();
-        paths
-            .into_iter()
-            .filter(|path| seen.insert(normalize_path(path, root)))
-            .collect()
+        paths.into_iter().filter(|path| seen.insert(normalize_path(path, root))).collect()
     }
 
-    fn collect_deleted(root: &Path, options: &FindChangedFilesOptions) -> Result<Vec<String>, GitVcsError> {
+    fn collect_deleted(
+        root: &Path,
+        options: &FindChangedFilesOptions,
+    ) -> Result<Vec<String>, GitVcsError> {
         let mut paths = if options.staged_only {
             Self::staged_deleted(root)?
         } else if let Some(base) = &options.changed_since {
@@ -196,10 +176,8 @@ impl GitVcsProvider {
             paths
         };
 
-        if options.staged_only {
-            paths.extend(Self::rename_old_paths(root, true)?);
-        } else {
-            paths.extend(Self::rename_old_paths(root, true)?);
+        paths.extend(Self::rename_old_paths(root, true)?);
+        if !options.staged_only {
             paths.extend(Self::rename_old_paths(root, false)?);
         }
 
@@ -230,8 +208,14 @@ impl VcsProvider for GitVcsProvider {
         let relative_deleted = Self::collect_deleted(&root, options)?;
 
         Ok(ChangedPaths {
-            modified: Self::dedupe_paths(&root, Self::resolve_modified_paths(&root, relative_modified)),
-            deleted: Self::dedupe_paths(&root, Self::resolve_deleted_paths(&root, relative_deleted)),
+            modified: Self::dedupe_paths(
+                &root,
+                Self::resolve_modified_paths(&root, relative_modified),
+            ),
+            deleted: Self::dedupe_paths(
+                &root,
+                Self::resolve_deleted_paths(&root, relative_deleted),
+            ),
         })
     }
 }
@@ -243,7 +227,10 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::{options::DEFAULT_FORCE_RERUN_TRIGGERS, test_helpers::{commit_all, init_git_repo, stage_paths}};
+    use crate::{
+        options::DEFAULT_FORCE_RERUN_TRIGGERS,
+        test_helpers::{commit_all, init_git_repo, stage_paths},
+    };
 
     #[test]
     fn uncommitted_changes_include_staged_and_unstaged() {

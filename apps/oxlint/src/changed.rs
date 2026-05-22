@@ -10,10 +10,7 @@ use oxc_vcs::{
 };
 use rustc_hash::FxHashSet;
 
-use crate::{
-    cli::ChangedOptions,
-    lint::print_and_flush_stdout,
-};
+use crate::{cli::ChangedOptions, lint::print_and_flush_stdout};
 
 pub struct ChangedFilterResult {
     pub changed_paths: FxHashSet<PathBuf>,
@@ -53,12 +50,10 @@ pub fn resolve_changed_paths(
         }
     }
 
-    let all_for_triggers = changed_paths
-        .iter()
-        .chain(deleted_paths.iter())
-        .cloned()
-        .collect::<Vec<_>>();
-    let force_full_run = matches_force_rerun_trigger(&all_for_triggers, DEFAULT_FORCE_RERUN_TRIGGERS);
+    let all_for_triggers =
+        changed_paths.iter().chain(deleted_paths.iter()).cloned().collect::<Vec<_>>();
+    let force_full_run =
+        matches_force_rerun_trigger(&all_for_triggers, DEFAULT_FORCE_RERUN_TRIGGERS);
 
     Ok(ChangedFilterResult { changed_paths, deleted_paths, force_full_run })
 }
