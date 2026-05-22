@@ -1,8 +1,10 @@
 //! Version-control helpers for discovering changed files (used by oxlint and other tools).
 
+mod error;
 mod git;
 mod options;
 
+pub use error::VcsError;
 pub use git::{GitVcsError, GitVcsProvider};
 pub use options::{FindChangedFilesOptions, ForceRerunTrigger, DEFAULT_FORCE_RERUN_TRIGGERS};
 
@@ -28,12 +30,11 @@ pub trait VcsProvider {
     ///
     /// # Errors
     ///
-    /// Returns [`GitVcsError`] when the repository cannot be located, a git command fails,
-    /// or an I/O error occurs while running git.
+    /// Returns [`VcsError`] when the repository cannot be located or a provider command fails.
     fn find_changed_files(
         &self,
         options: &FindChangedFilesOptions,
-    ) -> Result<ChangedPaths, GitVcsError>;
+    ) -> Result<ChangedPaths, VcsError>;
 }
 
 /// Normalize a path for set comparisons.

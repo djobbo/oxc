@@ -373,7 +373,7 @@ impl CliRunner {
         if changed_options.is_active() {
             let changed = match resolve_changed_paths(&self.cwd, &changed_options) {
                 Ok(changed) => changed,
-                Err(oxc_vcs::GitVcsError::NotAGitRepository) => {
+                Err(oxc_vcs::VcsError::NotARepository) => {
                     print_and_flush_stdout(
                         stdout,
                         "Could not determine changed files: not a git repository.\nUse --related to pass explicit changed paths.\n",

@@ -5,8 +5,8 @@ use std::{
 
 use oxc_linter::{ConfigStore, LintOptions, LintService, LintServiceOptions, Linter, OsFileSystem};
 use oxc_vcs::{
-    DEFAULT_FORCE_RERUN_TRIGGERS, FindChangedFilesOptions, GitVcsError, GitVcsProvider,
-    VcsProvider, matches_force_rerun_trigger, normalize_path,
+    DEFAULT_FORCE_RERUN_TRIGGERS, FindChangedFilesOptions, GitVcsProvider, VcsError, VcsProvider,
+    matches_force_rerun_trigger, normalize_path,
 };
 use rustc_hash::FxHashSet;
 
@@ -25,7 +25,7 @@ pub struct ChangedFilterResult {
 pub fn resolve_changed_paths(
     cwd: &Path,
     options: &ChangedOptions,
-) -> Result<ChangedFilterResult, GitVcsError> {
+) -> Result<ChangedFilterResult, VcsError> {
     let mut changed_paths = FxHashSet::default();
     let mut deleted_paths = FxHashSet::default();
 

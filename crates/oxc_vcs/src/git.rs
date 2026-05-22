@@ -211,7 +211,7 @@ impl VcsProvider for GitVcsProvider {
     fn find_changed_files(
         &self,
         options: &FindChangedFilesOptions,
-    ) -> Result<ChangedPaths, GitVcsError> {
+    ) -> Result<ChangedPaths, crate::VcsError> {
         let root = Self::git_root(&options.cwd)?;
 
         let relative_modified = if options.staged_only {
@@ -346,7 +346,7 @@ mod tests {
                 ..FindChangedFilesOptions::default()
             })
             .unwrap_err();
-        assert!(matches!(err, GitVcsError::NotAGitRepository));
+        assert!(matches!(err, crate::VcsError::NotARepository));
     }
 
     #[test]
